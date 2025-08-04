@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "YT Ads Slayer Pro",
+  "version": "1.0.0",
+  "description": "專為 YouTube™ 設計的廣告移除插件，具備攔截計數與日誌，攔截廣告、反廣告攔截提示。",
+  "icons": {
+
+    "128": "icon.png"
+  },
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "icon2.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.youtube.com/*"],
+      "js": ["yt_ads_slayer.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "permissions": [
+    "storage",
+    "tabs"
+  ]
+}
