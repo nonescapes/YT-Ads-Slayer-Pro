@@ -18,24 +18,37 @@ const reportAdBlocked = () => {
 /**
  * 監聽來自彈出視窗 (popup.js) 的訊息，以控制日誌視窗的顯示或隱藏。
  */
-chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
-  if (message.type === 'TOGGLE_LOG') {
-    const logWindow = document.getElementById('ad-slayer-log-window');
-    if (logWindow) {
-      // 根據收到的 isLogEnabled 狀態來決定顯示或隱藏
-      logWindow.style.display = message.isLogEnabled ? 'block' : 'none';
-    }
-  }
-});
+if (chrome.runtime && chrome.runtime.onMessage) {
+    chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+      if (message.type === 'TOGGLE_LOG') {
+        const logWindow = document.getElementById('ad-slayer-log-window');
+        if (logWindow) {
+          // 根據收到的 isLogEnabled 狀態來決定顯示或隱藏
+          logWindow.style.display = message.isLogEnabled ? 'block' : 'none';
+        } else if (message.isLogEnabled) {
+          // 如果日誌從關閉變為開啟，且視窗不存在，則創建它
+          createNotificationWindow();
+        }
+      }
+    });
+}
+
 
 /**
  * 頁面載入時，從存儲中讀取日誌開關的初始狀態。
  */
 if (chrome.storage && chrome.storage.sync) {
+    // 【關鍵修正】我將創建視窗的邏輯移到這裡
+    // 先讀取設定，再決定是否要執行 createNotificationWindow
     chrome.storage.sync.get(['isLogEnabled'], (result) => {
-        const logWindow = document.getElementById('ad-slayer-log-window');
-        if (logWindow && result.isLogEnabled === false) { // 僅在明確設定為 false 時隱藏
-            logWindow.style.display = 'none';
+        if (result.isLogEnabled) {
+            // 只有在日誌記錄為開啟時，才創建視窗
+            // 這段程式碼是從你原本的檔案末端移動過來的，邏輯完全相同
+            if (document.body) {
+                createNotificationWindow();
+            } else {
+                document.addEventListener('DOMContentLoaded', createNotificationWindow);
+            }
         }
     });
 }
@@ -92,6 +105,25 @@ if (chrome.storage && chrome.storage.sync) {
     });
 
     logWindow.appendChild(header);
+
+    // --- 【新增】從 sessionStorage 載入並顯示歷史紀錄 ---
+    try {
+        const key = 'yt-ads-slayer-logs';
+        const logs = JSON.parse(sessionStorage.getItem(key)) || [];
+        logs.forEach(msg => {
+            const logEntry = document.createElement('div');
+            logEntry.textContent = msg;
+            Object.assign(logEntry.style, {
+                padding: '2px 0',
+                borderBottom: '1px solid #333'
+            });
+            logWindow.appendChild(logEntry);
+        });
+    } catch (e) {
+        // 忽略 sessionStorage 的錯誤
+    }
+    // --- 【結束】新增部分 ---
+
     document.body.appendChild(logWindow);
   };
 
@@ -100,6 +132,21 @@ if (chrome.storage && chrome.storage.sync) {
    * @param {string} message - 要記錄的訊息。
    */
   const logToWindow = (message) => {
+    // --- 【新增】將日誌保存到 sessionStorage 以便刷新後讀取 ---
+    try {
+        const key = 'yt-ads-slayer-logs';
+        let logs = JSON.parse(sessionStorage.getItem(key)) || [];
+        logs.unshift(message); // 將新訊息加到陣列最前面
+        // 為避免佔用過多記憶體，只保留最新的 100 條紀錄
+        if (logs.length > 100) {
+            logs.length = 100;
+        }
+        sessionStorage.setItem(key, JSON.stringify(logs));
+    } catch (e) {
+        // 忽略 sessionStorage 可能發生的錯誤 (例如空間已滿)
+    }
+    // --- 【結束】新增部分 ---
+
     const logWindow = document.getElementById('ad-slayer-log-window');
     // 如果視窗不存在（可能在 body 載入完成前被呼叫），則不執行
     if (!logWindow) {
@@ -205,22 +252,17 @@ if (chrome.storage && chrome.storage.sync) {
       "ytd-action-engagement-panel-content-renderer", // 參與面板中的行動呼籲廣告內容 (Action Engagement Panel Content)
       "ytd-banner-promo-renderer", // 橫幅推廣 (Banner Promo)
 
-
 	  
       "ytd-engagement-panel-title-header-renderer", //播放 主要廣告 參與面板中的標題廣告 (Engagement Panel Ad)
       "ytd-ads-engagement-panel-content-renderer", // 播放 主要廣告 參與面板中的廣告內容 (Ads Engagement Panel Content)
 	  'tp-yt-iron-overlay-backdrop', //播放
       'panel-ad-header-image-lockup-view-model', //播放
+	  "yt-mealbar-promo-renderer", //播放 Premium 家庭方案等彈出式廣告
 	  
-
 	  
       'ytd-enforcement-message-view-model', //播放 反廣告攔截器的提示
-	  //'.ytp-ad-module',
+	  //'.ytp-ad-module', //禁用會出現問題
 	  '.video-ads', //主頁 播放 片尾圖片
-/*
-	  "ytp-image-background", //播放 片尾圖片廣告
-	  "ytp-image-background ytp-video-interstitial-buttoned-centered-layout__background-image-container",
-	  "ytp-image-background--gradient-vertical"*/
     ];
 
        // 遍歷每一個廣告選擇器
@@ -251,8 +293,9 @@ if (chrome.storage && chrome.storage.sync) {
 
         // --- Conditional Hiding Logic (from previous solution) ---
 		const visualHideSelectors = [
+					'ytd-player-legacy-desktop-watch-ads-renderer',
                     'ytd-engagement-panel-title-header-renderer',
-					'ytp-image-background' // 新增：處理影片結束或中繼的圖片廣告
+					'ytd-enforcement-message-view-model' 
 		];
 
         if (visualHideSelectors.includes(selector)) {
@@ -290,9 +333,31 @@ if (chrome.storage && chrome.storage.sync) {
     });
   };
 
+  /**
+   * --- 全新功能：處理反廣告攔截器的黑畫面問題 ---
+   * 偵測到 "error-screen" 出現時，依使用者要求重新整理頁面。
+   */
+  const handleAdBlockerScreen = () => {
+    const errorScreen = document.querySelector('yt-playability-error-supported-renderers#error-screen');
+
+    // 檢查錯誤畫面是否存在且可見 (offsetParent !== null 是檢查元素是否在畫面上顯示的好方法)
+    if (errorScreen && errorScreen.offsetParent !== null) {
+      
+      // 檢查是否已在重整過程中，避免無限循環
+      if (!window.isReloadingForAdBlock) {
+        window.isReloadingForAdBlock = true; // 設定一個標記
+        logToWindow(`偵測到反廣告攔截畫面，正在重新整理頁面...`);
+        // 執行重整
+        window.location.reload();
+      }
+    }
+  };
+
+
   //根據當前頁面路徑，決定執行哪個廣告處理函數
   const runAdChecks = () => {
     handleGeneralAds(); // 對所有頁面都有效
+    handleAdBlockerScreen(); // 【新】檢查反廣告攔截畫面
     if (window.location.pathname === '/watch') { // 只在影片觀看頁面執行
       handleWatchPageAds();
     }
@@ -301,12 +366,16 @@ if (chrome.storage && chrome.storage.sync) {
   // 頁面初次載入時，立即執行一次檢查
   // runAdChecks(); // MutationObserver 會在 DOM 載入後觸發，此處可選
 
+  // 【關鍵修正】我已經將創建視窗的邏輯移動到檔案上方讀取設定的地方
+  // 所以你原本在檔案末端的這段程式碼就不再需要了
+  /*
   // 確保懸浮視窗在 DOM 準備好後被創建
   if (document.body) {
     createNotificationWindow();
   } else {
     document.addEventListener('DOMContentLoaded', createNotificationWindow);
   }
+  */
 
   // 使用 MutationObserver 來監控頁面的動態變化，確保新載入的廣告也能被處理
   const observer = new MutationObserver(runAdChecks);

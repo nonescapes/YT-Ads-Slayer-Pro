@@ -1,6 +1,7 @@
 // 初始化存儲
 chrome.runtime.onInstalled.addListener(() => {
-    chrome.storage.sync.set({ isLogEnabled: true });
+    // 將 isLogEnabled 的預設值改為 false，這樣攔截紀錄預設為關閉
+    chrome.storage.sync.set({ isLogEnabled: false });
     chrome.storage.local.set({ adCounts: {} });
     console.log('YT Ads Slayer 已安裝，初始化設定完成。');
 });
@@ -55,10 +56,19 @@ function updateCountForTab(tabId) {
 }
 
 
-// 更新徽章的函數
+/**
+ * 更新擴充功能圖示上的徽章（Badge）。
+ * @param {number} tabId - 分頁 ID。
+ * @param {number} count - 要顯示的數字。
+ */
 function updateBadge(tabId, count) {
     const text = count > 0 ? count.toString() : '';
-    // 使用 .catch() 來捕獲當分頁不存在時產生的錯誤，防止擴充套件崩潰
+    
+    // --- 【這是控制圖示上數字的程式碼】 ---
+    // 在這裡設定要顯示的文字 (廣告數量)
     chrome.action.setBadgeText({ tabId: tabId, text: text }).catch((error) => { /* console.log(error) */ });
+    
+    // --- 【這是控制下方紅色方形 (徽章) 顏色的程式碼】 ---
+    // 你可以在這裡修改徽章的背景顏色，但無法修改大小。
     chrome.action.setBadgeBackgroundColor({ tabId: tabId, color: '#ff4d4d' }).catch((error) => { /* console.log(error) */ });
 }
